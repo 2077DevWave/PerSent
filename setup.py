@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="PerSent",
-    version="1.1.0",
+    version="1.2.0",
     author="RezaGooner",
     author_email="RezaAsadiProgrammer@Gmail.com",
     description="Persian Sentiment Analysis Toolkit",

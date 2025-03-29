@@ -24,95 +24,139 @@ class CommentAnalyzer:
         
     def _preprocess_text(self, text):
         """PreProcess Persian Text"""
-        # Normalizing
-        text = self.normalizer.normalize(str(text))
-        
-        # remove number and sign
-        text = re.sub(r'[!()-\[\]{};:\'",؟<>./?@#$%^&*_~۰-۹\d]+', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # tokenize and stemming
-        tokens = word_tokenize(text)
-        processed_tokens = [
-            self.stemmer.stem(token)
-            for token in tokens
-            if token not in self.stopwords and len(token) > 1
-        ]
-        
-        return processed_tokens
+        try:
+            # Normalizing
+            text = self.normalizer.normalize(str(text))
+            
+            # remove number and sign
+            text = re.sub(r'[!()-\[\]{};:\'",؟<>./?@#$%^&*_~۰-۹\d]+', ' ', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            
+            # tokenize and stemming
+            tokens = word_tokenize(text)
+            processed_tokens = [
+                self.stemmer.stem(token)
+                for token in tokens
+                if token not in self.stopwords and len(token) > 1
+            ]
+            
+            return processed_tokens
+        except Exception as e:
+            raise Exception(f"Text preprocessing failed: {str(e)}")
     
     def _sentence_vector(self, sentence, model):
         """convert sentences to vector by word2vec model"""
-        vectors = []
-        for word in sentence:
-            try:
-                vectors.append(model.wv[word])
-            except KeyError:
-                vectors.append(np.zeros(100))
-        return np.mean(vectors, axis=0) if vectors else np.zeros(100)
+        try:
+            vectors = []
+            for word in sentence:
+                try:
+                    vectors.append(model.wv[word])
+                except KeyError:
+                    vectors.append(np.zeros(100))
+            return np.mean(vectors, axis=0) if vectors else np.zeros(100)
+        except Exception as e:
+            raise Exception(f"Sentence vectorization failed: {str(e)}")
     
     def train(self, train_csv, test_size=0.2, vector_size=100, window=5):
         """Train model"""
-        # read data
-        df = pd.read_csv(train_csv)
-        df['tokens'] = df['body'].apply(self._preprocess_text)
-        
-        # train Word2Vec model
-        self.vectorizer = Word2Vec(
-            sentences=df['tokens'],
-            vector_size=vector_size,
-            window=window,
-            min_count=1,
-            workers=4
-        )
-        
-        # convert sentences to vector
-        X = np.array([self._sentence_vector(s, self.vectorizer) for s in df['tokens']])
-        y = df['recommendation_status'].map({
-            "no_idea": 2,
-            "recommended": 1,
-            "not_recommended": 0
-        }).values
-        
-        # make train and test data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
-
-        self.classifier = LogisticRegression(max_iter=1000)
-        self.classifier.fit(X_train, y_train)
-        
-        # save model
-        self.save_model()
-        
-        # evaluation
-        accuracy = self.classifier.score(X_test, y_test)
-        return accuracy
-    
-    def predict(self, text):
-        """Predict text sentiment"""
-        if not self.classifier or not self.vectorizer:
-            raise Exception("Model not trained! Call train() first or load a pretrained model.")
+        try:
+            # read data
+            if not os.path.exists(train_csv):
+                raise FileNotFoundError(f"Training file {train_csv} not found")
+                
+            df = pd.read_csv(train_csv)
             
-        tokens = self._preprocess_text(text)
-        vector = self._sentence_vector(tokens, self.vectorizer)
-        prediction = self.classifier.predict([vector])[0]
-        
-        return {
-            0: "not_recommended",
-            1: "recommended",
-            2: "no_idea"
-        }[prediction]
+            if 'body' not in df.columns or 'recommendation_status' not in df.columns:
+                raise ValueError("CSV file must contain 'body' and 'recommendation_status' columns")
+            
+            df['tokens'] = df['body'].apply(self._preprocess_text)
+            
+            # train Word2Vec model
+            self.vectorizer = Word2Vec(
+                sentences=df['tokens'],
+                vector_size=vector_size,
+                window=window,
+                min_count=1,
+                workers=4
+            )
+            
+            # convert sentences to vector
+            X = np.array([self._sentence_vector(s, self.vectorizer) for s in df['tokens']])
+            y = df['recommendation_status'].map({
+                "no_idea": 2,
+                "recommended": 1,
+                "not_recommended": 0
+            }).values
+            
+            # make train and test data
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
+
+            self.classifier = LogisticRegression(max_iter=1000)
+            self.classifier.fit(X_train, y_train)
+            
+            # save model
+            self.saveModel()
+            
+            # evaluation
+            accuracy = self.classifier.score(X_test, y_test)
+            return accuracy
+            
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Training file error: {str(e)}")
+        except ValueError as e:
+            raise ValueError(f"Data validation error: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Training failed: {str(e)}")
     
-    def save_model(self):
+    def analyzeText(self, text):
+        """Predict text sentiment"""
+        try:
+            if not self.classifier or not self.vectorizer:
+                raise Exception("Model not trained! Call train() first or load a pretrained model.")
+                
+            tokens = self._preprocess_text(text)
+            vector = self._sentence_vector(tokens, self.vectorizer)
+            prediction = self.classifier.predict([vector])[0]
+            
+            return {
+                0: "not_recommended",
+                1: "recommended",
+                2: "no_idea"
+            }[prediction]
+            
+        except Exception as e:
+            raise Exception(f"Text analysis failed: {str(e)}")
+    
+    def saveModel(self):
         """save trained model"""
-        joblib.dump(self.classifier, os.path.join(self.model_dir, 'classifier.joblib'))
-        self.vectorizer.save(os.path.join(self.model_dir, 'word2vec.model'))
+        try:
+            if not self.classifier or not self.vectorizer:
+                raise Exception("No trained model to save")
+                
+            joblib.dump(self.classifier, os.path.join(self.model_dir, 'classifier.joblib'))
+            self.vectorizer.save(os.path.join(self.model_dir, 'word2vec.model'))
+        except IOError as e:
+            raise IOError(f"Failed to save model: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error while saving model: {str(e)}")
     
-    def load_model(self):
+    def loadModel(self):
         """reload from file"""
-        self.classifier = joblib.load(os.path.join(self.model_dir, 'classifier.joblib'))
-        self.vectorizer = Word2Vec.load(os.path.join(self.model_dir, 'word2vec.model'))
+        try:
+            classifier_path = os.path.join(self.model_dir, 'classifier.joblib')
+            vectorizer_path = os.path.join(self.model_dir, 'word2vec.model')
+            
+            if not os.path.exists(classifier_path) or not os.path.exists(vectorizer_path):
+                raise FileNotFoundError("Model files not found in the specified directory")
+                
+            self.classifier = joblib.load(classifier_path)
+            self.vectorizer = Word2Vec.load(vectorizer_path)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Model files not found: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to load model: {str(e)}")
         
-    def csvPredict(self, input_csv, output_path, summary_path=None, text_column=0):
+    def analyzeCSV(self, input_csv, output_path, summary_path=None, text_column=0):
         """
         Analyze sentiment for comments in a CSV file and save results
         
@@ -123,9 +167,20 @@ class CommentAnalyzer:
                                           Defaults to 0 (first column).
             summary_path (str, optional): Path to save prediction summary report.
                                        If None, no summary will be saved.
+                                       
+        Returns:
+            pd.DataFrame: DataFrame containing analysis results or None if failed
+            
+        Raises:
+            FileNotFoundError: If input file not found
+            ValueError: If invalid column specified
+            Exception: For other processing errors
         """
         try:
             # Read input CSV
+            if not os.path.exists(input_csv):
+                raise FileNotFoundError(f"Input file {input_csv} not found")
+                
             df = pd.read_csv(input_csv)
             
             # Determine the correct column
@@ -145,7 +200,7 @@ class CommentAnalyzer:
             
             # Analyze each comment
             tqdm.pandas(desc="Analyzing comments")
-            df['sentiment'] = df[column_name].progress_apply(self.predict)
+            df['sentiment'] = df[column_name].progress_apply(self.analyzeText)
             
             # Save results
             df.to_csv(output_path, index=False, encoding='utf-8-sig')
@@ -159,41 +214,50 @@ class CommentAnalyzer:
             
             return df
             
+        except FileNotFoundError as e:
+            print(f"Error: File not found - {str(e)}")
+            return None
+        except ValueError as e:
+            print(f"Error: Invalid column specification - {str(e)}")
+            return None
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(f"Error during CSV analysis: {str(e)}")
             return None
 
     def _generate_summary(self, df):
         """Generate prediction summary statistics"""
-        # Count each sentiment
-        counts = df['sentiment'].value_counts().to_dict()
-        
-        # Create summary dataframe
-        summary = pd.DataFrame({
-            'Category': [
-                'Recommended',
-                'Not Recommended', 
-                'No Idea',
-                'Total',
-                'Model Accuracy'
-            ],
-            'Count': [
-                counts.get('recommended', 0),
-                counts.get('not_recommended', 0),
-                counts.get('no_idea', 0),
-                len(df),
-                'N/A'  # Accuracy needs to be calculated during training
-            ],
-            'Percentage': [
-                f"{100 * counts.get('recommended', 0) / len(df):.2f}%",
-                f"{100 * counts.get('not_recommended', 0) / len(df):.2f}%",
-                f"{100 * counts.get('no_idea', 0) / len(df):.2f}%",
-                '100%',
-                'N/A'
-            ]
-        })
-        
-        return summary
+        try:
+            # Count each sentiment
+            counts = df['sentiment'].value_counts().to_dict()
+            
+            # Create summary dataframe
+            summary = pd.DataFrame({
+                'Category': [
+                    'Recommended',
+                    'Not Recommended', 
+                    'No Idea',
+                    'Total',
+                    'Model Accuracy'
+                ],
+                'Count': [
+                    counts.get('recommended', 0),
+                    counts.get('not_recommended', 0),
+                    counts.get('no_idea', 0),
+                    len(df),
+                    'N/A'  # Accuracy needs to be calculated during training
+                ],
+                'Percentage': [
+                    f"{100 * counts.get('recommended', 0) / len(df):.2f}%",
+                    f"{100 * counts.get('not_recommended', 0) / len(df):.2f}%",
+                    f"{100 * counts.get('no_idea', 0) / len(df):.2f}%",
+                    '100%',
+                    'N/A'
+                ]
+            })
+            
+            return summary
+        except Exception as e:
+            raise Exception(f"Failed to generate summary: {str(e)}")
 
 
 # Github : RezaGooner

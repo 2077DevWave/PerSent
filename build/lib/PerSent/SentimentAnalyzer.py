@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-Persian Weighted Sentiment Analyzer Library
+Persian Weighted Sentiment Analyzer 
 A comprehensive sentiment analysis tool for Persian text with word weighting support.
 """
 
@@ -75,7 +74,7 @@ class SentimentAnalyzer:
         }
         return [f for f in forms if f and len(f) > 1]
     
-    def load_weighted_lexicon(self, csv_file, word_col=0, emotion_col=1, weight_col=2):
+    def loadLex(self, csv_file, word_col=0, emotion_col=1, weight_col=2):
         """
         Load a weighted lexicon from CSV file
         
@@ -88,17 +87,18 @@ class SentimentAnalyzer:
         Raises:
             FileNotFoundError: If file doesn't exist
             ValueError: If file format is invalid
+            Exception: For general processing errors
         """
-        if not os.path.exists(csv_file):
-            raise FileNotFoundError(f"Lexicon file {csv_file} not found")
-            
         try:
+            if not os.path.exists(csv_file):
+                raise FileNotFoundError(f"Lexicon file {csv_file} not found")
+                
             with open(csv_file, mode='r', encoding='utf-8') as file:
                 reader = csv.reader(file)
                 for row in reader:
                     if len(row) < max(word_col, emotion_col, weight_col) + 1:
                         continue
-                        
+                            
                     # Handle both column names and indices
                     word = str(row[word_col]).strip() if isinstance(word_col, int) else row[word_col]
                     emotion = str(row[emotion_col]).strip() if isinstance(emotion_col, int) else row[emotion_col]
@@ -126,11 +126,15 @@ class SentimentAnalyzer:
                 self.keywords[emotion] = list(set(self.keywords[emotion]))
                 
             self.model_loaded = True
-                
+            
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Error: {str(e)}")
+        except ValueError as e:
+            raise ValueError(f"Invalid data format in CSV file: {str(e)}")
         except Exception as e:
-            raise ValueError(f"Error processing lexicon file: {str(e)}")
+            raise Exception(f"Failed to load lexicon: {str(e)}")
     
-    def train_from_csv(self, train_csv, text_col='text', emotion_col='emotion', weight_col='weight'):
+    def train(self, train_csv, text_col='text', emotion_col='emotion', weight_col='weight'):
         """
         Train model from a weighted CSV dataset
         
@@ -146,11 +150,12 @@ class SentimentAnalyzer:
         Raises:
             FileNotFoundError: If training file doesn't exist
             ValueError: If required columns are missing
+            Exception: For general training errors
         """
-        if not os.path.exists(train_csv):
-            raise FileNotFoundError(f"Training file {train_csv} not found")
-            
         try:
+            if not os.path.exists(train_csv):
+                raise FileNotFoundError(f"Training file {train_csv} not found")
+                
             df = pd.read_csv(train_csv)
             
             # Handle column names/indices
@@ -161,7 +166,7 @@ class SentimentAnalyzer:
             # Check required columns
             missing_cols = [col for col in [text_col, emotion_col, weight_col] if col not in df.columns]
             if missing_cols:
-                raise ValueError(f"Missing columns: {', '.join(missing_cols)}")
+                raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
             
             # Train model with weights
             for _, row in tqdm(df.iterrows(), total=len(df), desc="Training model"):
@@ -185,29 +190,42 @@ class SentimentAnalyzer:
                             self.word_weights.setdefault(form, {})[numeric_emotion] = weight
             
             # Save trained model
-            self.save_model()
+            self.saveModel()
             self.model_loaded = True
             
             return {"status": "success", "message": "Model trained successfully"}
             
+        except FileNotFoundError as e:
+            return {"status": "error", "message": f"File not found: {str(e)}"}
+        except ValueError as e:
+            return {"status": "error", "message": f"Data validation error: {str(e)}"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"Training failed: {str(e)}"}
     
-    def save_model(self, model_name='weighted_sentiment_model'):
+    def saveModel(self, model_name='weighted_sentiment_model'):
         """
         Save the current model to disk
         
         Args:
             model_name (str): Base name for model files (without extension)
+            
+        Raises:
+            IOError: If model cannot be saved
+            Exception: For general saving errors
         """
-        model_path = os.path.join(self.model_dir, f'{model_name}.joblib')
-        joblib.dump({
-            'emotion_map': self.emotion_map,
-            'keywords': dict(self.keywords),
-            'word_weights': dict(self.word_weights)
-        }, model_path)
+        try:
+            model_path = os.path.join(self.model_dir, f'{model_name}.joblib')
+            joblib.dump({
+                'emotion_map': self.emotion_map,
+                'keywords': dict(self.keywords),
+                'word_weights': dict(self.word_weights)
+            }, model_path)
+        except IOError as e:
+            raise IOError(f"Failed to save model to disk: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error while saving model: {str(e)}")
     
-    def load_model(self, model_name='weighted_sentiment_model'):
+    def loadModel(self, model_name='weighted_sentiment_model'):
         """
         Load a saved model from disk
         
@@ -217,22 +235,28 @@ class SentimentAnalyzer:
         Raises:
             FileNotFoundError: If model file doesn't exist
             ValueError: If model file is corrupted
+            Exception: For general loading errors
         """
-        model_path = os.path.join(self.model_dir, f'{model_name}.joblib')
-        
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file {model_path} not found")
-            
         try:
+            model_path = os.path.join(self.model_dir, f'{model_name}.joblib')
+            
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model file {model_path} not found")
+            
             data = joblib.load(model_path)
             self.emotion_map = data['emotion_map']
             self.keywords = defaultdict(list, data['keywords'])
             self.word_weights = defaultdict(dict, data['word_weights'])
             self.model_loaded = True
+            
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Model file not found: {str(e)}")
+        except (KeyError, AttributeError) as e:
+            raise ValueError(f"Invalid or corrupted model file: {str(e)}")
         except Exception as e:
-            raise ValueError(f"Error loading model: {str(e)}")
+            raise Exception(f"Failed to load model: {str(e)}")
     
-    def analyze_text(self, text):
+    def analyzeText(self, text):
         """
         Analyze sentiment of input text with weighted scoring
         
@@ -243,36 +267,40 @@ class SentimentAnalyzer:
             dict: Emotion percentages with weights
             
         Raises:
-            Exception: If model is not loaded
+            Exception: If model is not loaded or analysis fails
         """
-        if not self.model_loaded:
-            raise Exception("Model not loaded. Please load or train a model first.")
+        try:
+            if not self.model_loaded:
+                raise Exception("Model not loaded. Please load or train a model first.")
+                
+            words = self._preprocess_text(text)
+            emotion_scores = defaultdict(float)
+            total_score = 0.0
             
-        words = self._preprocess_text(text)
-        emotion_scores = defaultdict(float)
-        total_score = 0.0
-        
-        for word in words:
-            forms = self._generate_word_forms(word)
+            for word in words:
+                forms = self._generate_word_forms(word)
+                
+                for form in forms:
+                    if form in self.word_weights:
+                        for emotion_id, weight in self.word_weights[form].items():
+                            emotion_scores[emotion_id] += weight
+                            total_score += weight
             
-            for form in forms:
-                if form in self.word_weights:
-                    for emotion_id, weight in self.word_weights[form].items():
-                        emotion_scores[emotion_id] += weight
-                        total_score += weight
-        
-        # Calculate weighted percentages
-        results = {}
-        reverse_map = {v: k for k, v in self.emotion_map.items()}
-        
-        if total_score > 0:
-            for emotion_id in self.emotion_map.values():
-                score = emotion_scores.get(emotion_id, 0)
-                results[reverse_map[emotion_id]] = round(score / total_score * 100, 2)
-        
-        return results or {emotion: 0.0 for emotion in self.emotion_map}
+            # Calculate weighted percentages
+            results = {}
+            reverse_map = {v: k for k, v in self.emotion_map.items()}
+            
+            if total_score > 0:
+                for emotion_id in self.emotion_map.values():
+                    score = emotion_scores.get(emotion_id, 0)
+                    results[reverse_map[emotion_id]] = round(score / total_score * 100, 2)
+            
+            return results or {emotion: 0.0 for emotion in self.emotion_map}
+            
+        except Exception as e:
+            raise Exception(f"Text analysis failed: {str(e)}")
     
-    def analyze_csv(self, input_csv, output_csv, text_col='text', output_col='sentiment_analysis'):
+    def analyzeCSV(self, input_csv, output_csv, text_col='text', output_col='sentiment_analysis'):
         """
         Analyze sentiment for a CSV file and save results
         
@@ -286,12 +314,12 @@ class SentimentAnalyzer:
             bool: True if successful, False otherwise
             
         Raises:
-            Exception: If model is not loaded
+            Exception: If model is not loaded or processing fails
         """
-        if not self.model_loaded:
-            raise Exception("Model not loaded. Please load or train a model first.")
-            
         try:
+            if not self.model_loaded:
+                raise Exception("Model not loaded. Please load or train a model first.")
+                
             df = pd.read_csv(input_csv)
             
             # Handle column name/index
@@ -302,13 +330,21 @@ class SentimentAnalyzer:
             
             tqdm.pandas(desc="Analyzing sentiments")
             df[output_col] = df[text_col].progress_apply(
-                lambda x: self.analyze_text(str(x)))
+                lambda x: self.analyzeText(str(x)))
             
             # Save results
             df.to_csv(output_csv, index=False, encoding='utf-8-sig')
             return True
             
+        except FileNotFoundError as e:
+            print(f"Error: Input file not found - {str(e)}")
+            return False
+        except ValueError as e:
+            print(f"Error: Invalid column specification - {str(e)}")
+            return False
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(f"Error during CSV analysis: {str(e)}")
             return False
 
+
+# Github : RezaGooner
